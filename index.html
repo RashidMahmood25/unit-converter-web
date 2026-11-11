@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unit Converter — Length, Weight, Temperature &amp; More</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0B1F3A; color: #EAF6FC; min-height: 100vh; padding: 24px 16px; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 1.7rem; margin-bottom: 4px; }
+  .sub { text-align: center; color: #9fc3d8; margin-bottom: 24px; font-size: .95rem; }
+  .card { background: #fff; color: #111827; border-radius: 14px; padding: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  label { display: block; font-size: .85rem; font-weight: 600; color: #374151; margin: 12px 0 6px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tabs button { flex: 1 1 30%; padding: 8px 4px; border: 1px solid #d1d5db; background: #f3f4f6; border-radius: 8px; cursor: pointer; font-size: .85rem; }
+  .tabs button.active { background: #1769AA; color: #fff; border-color: #1769AA; }
+  .row { display: flex; gap: 10px; align-items: flex-end; }
+  .field { flex: 1; }
+  input, select { width: 100%; padding: 10px; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 8px; }
+  input:focus, select:focus { outline: 2px solid #20A4D8; border-color: #20A4D8; }
+  #swap { padding: 10px 14px; font-size: 1.2rem; background: #EAF6FC; border: 1px solid #20A4D8; border-radius: 8px; cursor: pointer; color: #1769AA; }
+  #result { margin-top: 18px; background: #EAF6FC; border-radius: 10px; padding: 16px; text-align: center; }
+  #result .big { font-size: 1.6rem; font-weight: 700; color: #0B1F3A; word-break: break-all; }
+  #result .formula { margin-top: 6px; color: #64748B; font-size: .9rem; }
+  .common { margin-top: 18px; }
+  .common h3 { font-size: .95rem; margin-bottom: 8px; color: #374151; }
+  .common button { display: block; width: 100%; text-align: left; padding: 8px 10px; margin-bottom: 6px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-size: .9rem; }
+  .common button:hover { background: #EAF6FC; }
+  .note { margin-top: 16px; text-align: center; color: #9fc3d8; font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔄 Unit Converter</h1>
+  <p class="sub">Length, weight, temperature, area, volume, speed, time &amp; data — all offline, in one page.</p>
+  <div class="card">
+    <div class="tabs" id="tabs"></div>
+
+    <div class="row">
+      <div class="field">
+        <label for="fromValue">Value</label>
+        <input id="fromValue" type="number" value="1" step="any" min="0">
+      </div>
+      <div class="field">
+        <label for="fromUnit">From</label>
+        <select id="fromUnit"></select>
+      </div>
+      <button id="swap" title="Swap units" aria-label="Swap units">⇄</button>
+      <div class="field">
+        <label for="toUnit">To</label>
+        <select id="toUnit"></select>
+      </div>
+    </div>
+
+    <div id="result">
+      <div class="big" id="resultText">—</div>
+      <div class="formula" id="formulaText"></div>
+    </div>
+
+    <div class="common">
+      <h3>Common conversions</h3>
+      <div id="commonList"></div>
+    </div>
+  </div>
+  <p class="note">All conversions are exact math on standard factors. Temperature uses the exact °C/°F/K formulas.</p>
+</div>
+
+<script>
+"use strict";
+// Each category: base unit + factor (units per base unit), except temperature
+// which uses toBase/fromBase functions.
+const CATEGORIES = {
+  "Length": {
+    base: "m",
+    units: { "Millimetre (mm)": 1000, "Centimetre (cm)": 100, "Metre (m)": 1,
+             "Kilometre (km)": 0.001, "Inch (in)": 39.3701, "Foot (ft)": 3.28084,
+             "Yard (yd)": 1.09361, "Mile (mi)": 0.000621371 }
+  },
+  "Weight": {
+    base: "kg",
+    units: { "Gram (g)": 1000, "Kilogram (kg)": 1, "Tonne (t)": 0.001,
+             "Ounce (oz)": 35.274, "Pound (lb)": 2.20462, "Stone (st)": 0.157473 }
+  },
+  "Temperature": {
+    special: true,
+    units: ["Celsius (°C)", "Fahrenheit (°F)", "Kelvin (K)"],
+    toBase: { // to Celsius
+      "Celsius (°C)": v => v,
+      "Fahrenheit (°F)": v => (v - 32) * 5 / 9,
+      "Kelvin (K)": v => v - 273.15
+    },
+    fromBase: { // from Celsius
+      "Celsius (°C)": v => v,
+      "Fahrenheit (°F)": v => v * 9 / 5 + 32,
+      "Kelvin (K)": v => v + 273.15
+    }
+  },
+  "Area": {
+    base: "m²",
+    units: { "Square metre (m²)": 1, "Square kilometre (km²)": 0.000001,
+             "Square foot (ft²)": 10.7639, "Square yard (yd²)": 1.19599,
+             "Acre": 0.000247105, "Hectare (ha)": 0.0001, "Marla": 0.0395369,
+             "Kanal": 0.00197684 }
+  },
+  "Volume": {
+    base: "L",
+    units: { "Millilitre (mL)": 1000, "Litre (L)": 1, "Cubic metre (m³)": 0.001,
+             "US gallon (gal)": 0.264172, "US pint (pt)": 2.11338,
+             "US fluid ounce (fl oz)": 33.814, "Cup": 4.22675 }
+  },
+  "Speed": {
+    base: "km/h",
+    units: { "Kilometres/hour (km/h)": 1, "Metres/second (m/s)": 0.277778,
+             "Miles/hour (mph)": 0.621371, "Knots (kn)": 0.539957 }
+  },
+  "Time": {
+    base: "s",
+    units: { "Second (s)": 1, "Minute (min)": 1 / 60, "Hour (h)": 1 / 3600,
+             "Day": 1 / 86400, "Week": 1 / 604800 }
+  },
+  "Data": {
+    base: "B",
+    units: { "Byte (B)": 1, "Kilobyte (KB)": 1 / 1024, "Megabyte (MB)": 1 / 1048576,
+             "Gigabyte (GB)": 1 / 1073741824, "Terabyte (TB)": 1 / 1099511627776 }
+  }
+};
+
+const COMMON = [
+  { cat: "Length", from: "Kilometre (km)", to: "Mile (mi)", value: 1 },
+  { cat: "Length", from: "Inch (in)", to: "Centimetre (cm)", value: 1 },
+  { cat: "Weight", from: "Kilogram (kg)", to: "Pound (lb)", value: 1 },
+  { cat: "Temperature", from: "Celsius (°C)", to: "Fahrenheit (°F)", value: 25 },
+  { cat: "Area", from: "Kanal", to: "Marla", value: 1 },
+  { cat: "Volume", from: "Litre (L)", to: "US gallon (gal)", value: 1 },
+  { cat: "Speed", from: "Kilometres/hour (km/h)", to: "Miles/hour (mph)", value: 100 },
+  { cat: "Data", from: "Gigabyte (GB)", to: "Megabyte (MB)", value: 1 }
+];
+
+let currentCat = "Length";
+const tabsEl = document.getElementById("tabs");
+const fromUnitEl = document.getElementById("fromUnit");
+const toUnitEl = document.getElementById("toUnit");
+const fromValueEl = document.getElementById("fromValue");
+const resultText = document.getElementById("resultText");
+const formulaText = document.getElementById("formulaText");
+
+function unitNames(cat) {
+  const c = CATEGORIES[cat];
+  return c.special ? c.units : Object.keys(c.units);
+}
+
+function convert(cat, value, from, to) {
+  const c = CATEGORIES[cat];
+  if (from === to) return value;
+  if (c.special) return c.fromBase[to](c.toBase[from](value));
+  const inBase = value / c.units[from];
+  return inBase * c.units[to];
+}
+
+function format(n) {
+  if (!isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs !== 0 && (abs >= 1e12 || abs < 1e-6)) return n.toExponential(6);
+  return Number(n.toPrecision(10)).toLocaleString("en-US");
+}
+
+function shortName(label) {
+  const m = label.match(/\(([^)]+)\)/);
+  return m ? m[1] : label;
+}
+
+function render() {
+  const from = fromUnitEl.value, to = toUnitEl.value;
+  const value = parseFloat(fromValueEl.value);
+  if (isNaN(value)) { resultText.textContent = "Enter a number"; formulaText.textContent = ""; return; }
+  const out = convert(currentCat, value, from, to);
+  resultText.textContent = format(value) + " " + shortName(from) + " = " + format(out) + " " + shortName(to);
+  formulaText.textContent = "1 " + shortName(from) + " = " + format(convert(currentCat, 1, from, to)) + " " + shortName(to);
+}
+
+function buildTabs() {
+  Object.keys(CATEGORIES).forEach(cat => {
+    const b = document.createElement("button");
+    b.textContent = cat;
+    if (cat === currentCat) b.classList.add("active");
+    b.addEventListener("click", () => {
+      currentCat = cat;
+      document.querySelectorAll(".tabs button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      fillUnits();
+      render();
+    });
+    tabsEl.appendChild(b);
+  });
+}
+
+function fillUnits() {
+  const names = unitNames(currentCat);
+  fromUnitEl.innerHTML = ""; toUnitEl.innerHTML = "";
+  names.forEach(n => {
+    fromUnitEl.add(new Option(n, n));
+    toUnitEl.add(new Option(n, n));
+  });
+  toUnitEl.selectedIndex = Math.min(1, names.length - 1);
+}
+
+function buildCommon() {
+  const list = document.getElementById("commonList");
+  COMMON.forEach(c => {
+    const out = convert(c.cat, c.value, c.from, c.to);
+    const b = document.createElement("button");
+    b.textContent = c.value + " " + shortName(c.from) + " = " + format(out) + " " + shortName(c.to) + "  (" + c.cat + ")";
+    b.addEventListener("click", () => {
+      currentCat = c.cat;
+      document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x.textContent === c.cat));
+      fillUnits();
+      fromUnitEl.value = c.from; toUnitEl.value = c.to;
+      fromValueEl.value = c.value;
+      render();
+    });
+    list.appendChild(b);
+  });
+}
+
+document.getElementById("swap").addEventListener("click", () => {
+  const tmp = fromUnitEl.value;
+  fromUnitEl.value = toUnitEl.value;
+  toUnitEl.value = tmp;
+  render();
+});
+[fromValueEl, fromUnitEl, toUnitEl].forEach(el => el.addEventListener("input", render));
+
+buildTabs();
+fillUnits();
+buildCommon();
+render();
+</script>
+</body>
+</html>
